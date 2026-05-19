@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Visualizing The City</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Workbench&display=swap" rel="stylesheet" />
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js">
+// ── Draggable popups ───────────────────────────────
+function makeDraggable(el) {
+  var isDragging = false;
+  var startX, startY, origX, origY;
+
+  el.addEventListener("mousedown", function(e) {
+    // Don't drag if clicking a button, link, or video
+    if (e.target.tagName === "BUTTON" || e.target.tagName === "A" || e.target.tagName === "VIDEO") return;
+    isDragging = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    var rect = el.getBoundingClientRect();
+    origX = rect.left;
+    origY = rect.top;
+    el.style.cursor = "grabbing";
+    e.preventDefault();
+  });
+
+  document.addEventListener("mousemove", function(e) {
+    if (!isDragging) return;
+    var dx = e.clientX - startX;
+    var dy = e.clientY - startY;
+    el.style.left = (origX + dx) + "px";
+    el.style.top  = (origY + dy) + "px";
+    el.style.transform = "none";
+    el.style.right = "auto";
+    el.style.bottom = "auto";
+  });
+
+  document.addEventListener("mouseup", function() {
+    if (!isDragging) return;
+    isDragging = false;
+    el.style.cursor = "default";
+  });
+
+  // Touch support
+  el.addEventListener("touchstart", function(e) {
+    if (e.target.tagName === "BUTTON" || e.target.tagName === "A") return;
+    var t = e.touches[0];
+    isDragging = true;
+    startX = t.clientX;
+    startY = t.clientY;
+    var rect = el.getBoundingClientRect();
+    origX = rect.left;
+    origY = rect.top;
+  }, { passive: true });
+
+  document.addEventListener("touchmove", function(e) {
+    if (!isDragging) return;
+    var t = e.touches[0];
+    var dx = t.clientX - startX;
+    var dy = t.clientY - startY;
+    el.style.left = (origX + dx) + "px";
+    el.style.top  = (origY + dy) + "px";
+    el.style.transform = "none";
+    el.style.right = "auto";
+    el.style.bottom = "auto";
+  }, { passive: true });
+
+  document.addEventListener("touchend", function() { isDragging = false; });
+}
+
+makeDraggable(popup);
+makeDraggable(exPopup);
+</script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --blue: #0026FF;
+      --off-white: #FFFCFD;
+      --dark: #323232;
+      --popup-bg: #b8bed4;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--blue);
+    }
+
+    #sticker-layer {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .sticker {
+      position: absolute;
+      width: 200px;
+      height: 200px;
+      pointer-events: all;
+      cursor: pointer;
+      transform-origin: center center;
+      will-change: transform;
+      transition: filter 0.18s ease;
+      filter: brightness(0) invert(1) brightness(0.196);
+      user-select: none;
+    }
+
+    .sticker img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+      pointer-events: none;
+      -webkit-user-drag: none;
+    }
+
+    .sticker:hover { filter: none; } /* overridden by JS when popup open */
+
+
+    #title {
+      position: fixed;
+      top: 28px;
+      right: 34px;
+      z-index: 30;
+      font-family: 'Workbench', cursive;
+      font-variation-settings: 'EHLT' 12, 'BLED' 100;
+      font-optical-sizing: none;
+      font-size: clamp(58px, 9vw, 140px);
+      color: var(--off-white);
+      line-height: 1.05;
+      text-align: right;
+      pointer-events: all;
+      cursor: pointer;
+      user-select: none;
+      max-width: 58vw;
+      transform: rotate(-10deg);
+      transform-origin: top right;
+    }
+
+    #title:hover { opacity: 0.85; }
+
+    #overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 499;
+      pointer-events: none;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+
+    #overlay.visible { display: flex; }
+
+
+
+    #popup {
+      pointer-events: all;
+      position: fixed;
+      z-index: 500;
+      cursor: grab;
+      left: 28px;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 101;
+      width: 527px;
+      max-width: calc(100vw - 32px);
+      max-height: 90vh;
+      background: var(--popup-bg);
+      border-radius: 18px;
+      overflow: hidden;
+      display: none;
+      flex-direction: column;
+    }
+
+    #popup.visible { display: flex; }
+
+    #popup-close {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      width: 18px;
+      height: 18px;
+      background: var(--dark);
+      border-radius: 50%;
+      cursor: pointer;
+      z-index: 10;
+      border: none;
+      padding: 0;
+    }
+
+    #popup-video-wrap {
+      width: 100%;
+      aspect-ratio: 16/10;
+      background: #ff00cc;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    #popup-video-wrap video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      pointer-events: none;
+    }
+
+    #popup-video-placeholder {
+      width: 100%;
+      height: 100%;
+      background: #ff00cc;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Arial Narrow', Arial, sans-serif;
+      font-size: 13px;
+      color: rgba(0,0,0,0.3);
+      letter-spacing: 0.05em;
+    }
+
+    #popup-body {
+      padding: 20px 24px 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      overflow-y: auto;
+    }
+
+    #popup-title {
+      font-family: 'Arial Narrow', Arial, sans-serif;
+      font-weight: 700;
+      font-size: 28px;
+      color: var(--dark);
+      line-height: 1.1;
+    }
+
+    #popup-desc {
+      font-family: 'Arial Narrow', Arial, sans-serif;
+      font-weight: 700;
+      font-size: 15px;
+      color: var(--dark);
+      line-height: 1.45;
+      margin-top: 4px;
+    }
+
+    #popup-link {
+      font-family: 'Arial Narrow', Arial, sans-serif;
+      font-weight: 700;
+      font-size: 15px;
+      color: var(--dark);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      display: inline-block;
+      margin-top: 2px;
+    }
+
+    #popup-link:hover { opacity: 0.7; }
+
+    #popup-author {
+      font-family: 'Arial Narrow', Arial, sans-serif;
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--dark);
+      margin-top: 10px;
+      opacity: 0.75;
+    }
+
+    #exhibition-popup {
+      pointer-events: all;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 500;
+      cursor: grab;
+      z-index: 101;
+      width: 580px;
+      max-width: calc(100vw - 32px);
+      background: var(--popup-bg);
+      border-radius: 18px;
+      padding: 40px 40px 44px;
+      display: none;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    #exhibition-popup.visible { display: flex; }
+
+    #exhibition-head {
+      font-family: 'Workbench', cursive;
+      font-variation-settings: 'EHLT' 12, 'BLED' 100;
+      font-optical-sizing: none;
+      font-size: 32px;
+      color: var(--dark);
+      line-height: 1;
+    }
+
+    #exhibition-sub {
+      font-family: 'Arial Narrow', Arial, sans-serif;
+      font-weight: 700;
+      font-size: 13px;
+      color: var(--dark);
+      opacity: 0.6;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    #exhibition-desc {
+      font-family: 'Arial Narrow', Arial, sans-serif;
+      font-weight: 700;
+      font-size: 16px;
+      color: var(--dark);
+      line-height: 1.55;
+      margin-top: 4px;
+    }
+
+    #exhibition-close {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      width: 18px;
+      height: 18px;
+      background: var(--dark);
+      border-radius: 50%;
+      cursor: pointer;
+      border: none;
+      padding: 0;
+    }
+
+    @media (max-width: 600px) {
+      #title {
+        font-size: clamp(28px, 11vw, 60px);
+        top: 16px;
+        right: 16px;
+        max-width: 85vw;
+      }
+      .sticker { width: 140px; height: 140px; }
+      #popup { max-height: 88vh; }
+      #popup-title { font-size: 22px; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="title" class="workbench">VISUALIZING<br>THE CITY</div>
+<div id="sticker-layer"></div>
+
+<div id="overlay">
+
+  <div id="popup">
+    <button id="popup-close" aria-label="Close"></button>
+    <div id="popup-video-wrap">
+      <div id="popup-video-placeholder">video coming soon</div>
+    </div>
+    <div id="popup-body">
+      <div id="popup-title"></div>
+      <div id="popup-desc"></div>
+      <a id="popup-link" href="#" target="_blank" rel="noopener">Explore here.</a>
+      <div id="popup-author"></div>
+    </div>
+  </div>
+
+  <div id="exhibition-popup">
+    <button id="exhibition-close" aria-label="Close"></button>
+    <div id="exhibition-head" class="workbench">Interactive Data Stories<br>with Open Data</div>
+    <div id="exhibition-desc">Cities generate extraordinary traces of themselves: millions of records about transit, trees, housing, 311 calls, cultural life, noise, air quality, migration patterns, and more. These nine projects were made in Visualizing the City, a course taught by Tandis Shoushtary at <a href="https://coopertype.org/" target="_blank" rel="noopener" style="color:#0026FF;text-decoration:none;">Type@Cooper</a>. Over eight weeks, students worked hands-on with Open Data to build polished, browser-based visual narratives — drawing from information design, journalism, interaction design, and creative coding.</div>
+  </div>
+</div>
+
+<script>
+// Apply Workbench variation settings after font loads
+document.fonts.ready.then(function() {
+  document.querySelectorAll('.workbench').forEach(function(el) {
+    el.style.fontVariationSettings = "'EHLT' 12, 'BLED' 100";
+  });
+});
+
+var projects = [
+  {
+    name: "Lost and, maybe, found",
+    student: "Edward Zavertyaev",
+    desc: "An interactive data experience about what Manhattan taxi passengers reported as lost to 311 in 2025. Explore the what, where, and when of the left-behind valuables, and try to track some down.",
+    link: "https://bespokeslides.com/taxi/",
+    image: "keys.png",
+    video: "grid growth.mp4"
+  },
+  {
+    name: "Food assistance in NYC",
+    student: "Celine Schmidt",
+    desc: "On June 1, Trump\u2019s cuts to SNAP will take effect. This project explores the impact on the ~180,000 New Yorkers that rely on it.",
+    link: "https://www.figma.com/proto/o0dFva1ffQgFCGaMXIK9Yj/SNAP-project-draft?node-id=437-22181&t=pDMZQPwBwVm4lQEc-1&scaling=scale-down-width&content-scaling=fixed&page-id=0%3A1&starting-point-node-id=437%3A22181",
+    image: "tomato.png",
+    video: "snap.mov"
+  },
+  {
+    name: "The sky above Gda\u0144sk",
+    student: "Alicja Kot",
+    desc: "An interactive data visualization exploring 339 bird species recorded in Gda\u0144sk, Poland and how they adapt to thrive alongside humans in an urban landscape.",
+    link: "https://very-tempo-rary.github.io/the-sky-above-gdansk/",
+    image: "bird.png",
+    video: "bird.mp4"
+  },
+  {
+    name: "NYC Footprints",
+    student: "Annie Zheng",
+    desc: "What does a city look like when you take away the city? This project lifts buildings out of their urban context and focuses on their footprints, the quiet geometry we usually overlook across every borough.",
+    link: "https://anniezheng98.github.io/final-proj-v01/intro.html",
+    image: "footprint.png",
+    video: "footprints.mov"
+  },
+  {
+    name: "Who owns the curb?",
+    student: "Annie Chen",
+    desc: "A scrollytelling data piece exploring the competing demands on urban curb space, from ride-shares and delivery trucks to bike lanes and bus stops. Built as an interactive prototype that makes the invisible politics of the street visible.",
+    link: "http://annieychen.com/curbspace/",
+    image: "curb.png",
+    video: "curb.mov"
+  },
+  {
+    name: "Discombobulate",
+    student: "Valiullah Hashmi",
+    desc: "A visual archive tracing how internet culture stopped describing reality during COVID and became reality itself. Built through Baudrillard\u2019s theory of simulacra, with data pulled from the Giphy API across four pandemic phases.",
+    link: "https://valiubisoft-creator.github.io/simulacra-economy/",
+    image: "discombobulate.png",
+    video: "discombobulate.mp4"
+  },
+  {
+    name: "NYC 311",
+    student: "Arif Qazi",
+    desc: "A 3D editorial data experience mapping New York City\u2019s 311 service request system. 9,000 daily complaints, infrastructure failures, and neighborhood needs visualized across time, revealing the seasonal rhythms and borough-level gaps hidden inside the city\u2019s open data archive.",
+    link: "https://dataviz-topaz.vercel.app/story",
+    image: "311.png",
+    video: "311.mov"
+  },
+  {
+    name: "Spaces In Between",
+    student: "Matthew Raupp",
+    desc: "Detroit holds 122,000 open lots and thousands of solitary structures across its 140+ square miles. Each click randomly juxtaposes two photographs to create a new study of the periphery and a meditation on the spaces in between.",
+    link: "https://raupp2112.github.io/spaces-in-between/",
+    image: "inbetween.png",
+    video: "inbetween.mov"
+  },
+  {
+    name: "Aging in New York",
+    student: "Ying Tang",
+    desc: "A data portrait of aging in New York City, told through the voices of Cantonese-speaking retirees at a Bensonhurst senior center. Behind NYC Aging\u2019s 321,000 annual participants is a quieter story of daily routines, post-retirement social worlds, and friendships reshuffled by COVID.",
+    link: "https://readymag.website/u3629705193/6268632/",
+    image: "aging.png",
+    video: "aging.mov"
+  }
+];
+
+// Matter.js setup
+var Engine = Matter.Engine;
+var Runner = Matter.Runner;
+var Bodies = Matter.Bodies;
+var Body = Matter.Body;
+var World = Matter.World;
+var Mouse = Matter.Mouse;
+var MouseConstraint = Matter.MouseConstraint;
+
+var engine = Engine.create({ gravity: { x: 0, y: 4.0 }, positionIterations: 10, velocityIterations: 8 });
+var world = engine.world;
+
+var W = window.innerWidth;
+var H = window.innerHeight;
+
+var wallOpts = { isStatic: true, restitution: 0.35, friction: 0.3 };
+var floorBody = Bodies.rectangle(W / 2, H + 25, W * 3, 50, wallOpts);
+var wallL = Bodies.rectangle(-25, H / 2, 50, H * 3, wallOpts);
+var wallR = Bodies.rectangle(W + 25, H / 2, 50, H * 3, wallOpts);
+World.add(world, [floorBody, wallL, wallR]);
+
+// Responsive sticker size: fit ~3 across on any screen, min 100px max 400px
+var displaySize = Math.min(400, Math.max(100, Math.floor(W / 3.2)));
+var radius = Math.floor(displaySize / 2.1);
+var half = displaySize / 2;
+
+var bodies = projects.map(function(p, i) {
+  var x = radius + Math.random() * (W - radius * 2);
+  var y = -radius * 1.2 - i * (radius * 2.1);
+  var b = Bodies.circle(x, y, radius, {
+    restitution: 0.05,
+    friction: 0.6,
+    frictionAir: 0.008,
+    density: 0.006
+  });
+  Body.setAngularVelocity(b, (Math.random() - 0.5) * 0.1);
+  World.add(world, b);
+  return b;
+});
+
+// Mouse drag
+var mouse = Mouse.create(document.body);
+var mc = MouseConstraint.create(engine, {
+  mouse: mouse,
+  constraint: { stiffness: 0.2, render: { visible: false } }
+});
+World.add(world, mc);
+
+// DOM stickers
+var layer = document.getElementById("sticker-layer");
+var domStickers = projects.map(function(p, i) {
+  var el = document.createElement("div");
+  el.className = "sticker";
+  var stickerSize = displaySize;
+  if (p.image === "aging.png") stickerSize = 250;
+  if (p.image === "curb.png") stickerSize = 300;
+  if (p.image === "discombobulate.png") stickerSize = 300;
+  if (p.image === "bird.png") stickerSize = 500;
+  el.style.width = stickerSize + "px";
+  el.style.height = stickerSize + "px";
+
+  var img = document.createElement("img");
+  img.src = p.image;
+  img.alt = p.name;
+  img.draggable = false;
+  el.appendChild(img);
+
+  el.addEventListener("click", function(e) {
+    e.stopPropagation();
+    openProject(i);
+  });
+  el.addEventListener("mouseenter", function() {
+    el.style.filter = "none";
+  });
+  el.addEventListener("mouseleave", function() {
+    el.style.filter = "";
+  });
+
+  // Footprint sticker: 5% larger
+  if (p.image === "footprint.png") {
+    var fs = displaySize * 1.05;
+    el.style.width = fs + "px";
+    el.style.height = fs + "px";
+  }
+
+  layer.appendChild(el);
+  return el;
+});
+
+// Run engine
+var runner = Runner.create();
+Runner.run(runner, engine);
+
+// Animate
+function animate() {
+  requestAnimationFrame(animate);
+  var maxAngle = 0.873; // ~50 degrees in radians
+  bodies.forEach(function(b, i) {
+    var x = b.position.x - half;
+    var y = b.position.y - half;
+    // Clamp angle visually (physics body keeps its angle, only DOM is clamped)
+    var rawAngle = b.angle % (2 * Math.PI);
+    var clampedAngle = Math.max(-maxAngle, Math.min(maxAngle, rawAngle));
+    domStickers[i].style.transform = "translate(" + x + "px," + y + "px) rotate(" + clampedAngle + "rad)";
+  });
+}
+animate();
+
+// Gentle nudge
+setInterval(function() {
+  bodies.forEach(function(b) {
+    if (Math.abs(b.velocity.x) < 0.4 && Math.abs(b.velocity.y) < 0.4) {
+      Body.applyForce(b, b.position, {
+        x: (Math.random() - 0.5) * 0.00014,
+        y: 0
+      });
+    }
+  });
+}, 2600);
+
+// Popup
+var overlay         = document.getElementById("overlay");
+var popup           = document.getElementById("popup");
+var popupClose      = document.getElementById("popup-close");
+var popupVideoWrap  = document.getElementById("popup-video-wrap");
+var popupPlaceholder= document.getElementById("popup-video-placeholder");
+var popupTitle      = document.getElementById("popup-title");
+var popupDesc       = document.getElementById("popup-desc");
+var popupLink       = document.getElementById("popup-link");
+var popupAuthor     = document.getElementById("popup-author");
+var exPopup         = document.getElementById("exhibition-popup");
+var exClose         = document.getElementById("exhibition-close");
+var activeVideo     = null;
+
+function closeAll() {
+  overlay.classList.remove("visible");
+  popup.classList.remove("visible");
+  exPopup.classList.remove("visible");
+  if (activeVideo) { activeVideo.pause(); activeVideo.remove(); activeVideo = null; }
+  popupPlaceholder.style.display = "flex";
+}
+
+function openProject(i) {
+  var p = projects[i];
+  closeAll();
+  popupTitle.textContent  = p.name;
+  popupDesc.textContent   = p.desc;
+  popupLink.href          = p.link;
+  popupAuthor.textContent = "By " + p.student;
+
+  if (p.video) {
+    popupPlaceholder.style.display = "none";
+    var vid = document.createElement("video");
+    vid.src = p.video;
+    vid.autoplay = true;
+    vid.loop = true;
+    vid.muted = true;
+    vid.playsInline = true;
+    vid.style.cssText = "width:100%;height:100%;object-fit:cover;display:block;";
+    popupVideoWrap.appendChild(vid);
+    activeVideo = vid;
+  } else {
+    popupPlaceholder.textContent = "video coming soon";
+    popupPlaceholder.style.display = "flex";
+  }
+
+  popup.classList.add("visible");
+  overlay.classList.add("visible");
+}
+
+// Auto-open exhibition popup after stickers have time to fall and settle
+setTimeout(function() {
+  closeAll();
+  exPopup.classList.add("visible");
+  overlay.classList.add("visible");
+}, 2000);
+
+// Title click also opens exhibition popup
+document.getElementById("title").addEventListener("click", function() {
+  closeAll();
+  exPopup.classList.add("visible");
+  overlay.classList.add("visible");
+});
+
+popupClose.addEventListener("click", closeAll);
+exClose.addEventListener("click", closeAll);
+
+// Close when clicking outside popup (but not on stickers)
+document.addEventListener("click", function(e) {
+  if (!overlay.classList.contains("visible")) return;
+  var inPopup = popup.contains(e.target) || exPopup.contains(e.target);
+  var inSticker = e.target.closest(".sticker");
+  if (!inPopup && !inSticker) closeAll();
+});
+
+window.addEventListener("resize", function() {
+  W = window.innerWidth;
+  H = window.innerHeight;
+  Body.setPosition(floorBody, { x: W / 2, y: H + 25 });
+  Body.setPosition(wallR, { x: W + 25, y: H / 2 });
+});
+
+// ── Draggable popups ───────────────────────────────
+function makeDraggable(el) {
+  var isDragging = false;
+  var startX, startY, origX, origY;
+
+  el.addEventListener("mousedown", function(e) {
+    // Don't drag if clicking a button, link, or video
+    if (e.target.tagName === "BUTTON" || e.target.tagName === "A" || e.target.tagName === "VIDEO") return;
+    isDragging = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    var rect = el.getBoundingClientRect();
+    origX = rect.left;
+    origY = rect.top;
+    el.style.cursor = "grabbing";
+    e.preventDefault();
+  });
+
+  document.addEventListener("mousemove", function(e) {
+    if (!isDragging) return;
+    var dx = e.clientX - startX;
+    var dy = e.clientY - startY;
+    el.style.left = (origX + dx) + "px";
+    el.style.top  = (origY + dy) + "px";
+    el.style.transform = "none";
+    el.style.right = "auto";
+    el.style.bottom = "auto";
+  });
+
+  document.addEventListener("mouseup", function() {
+    if (!isDragging) return;
+    isDragging = false;
+    el.style.cursor = "default";
+  });
+
+  // Touch support
+  el.addEventListener("touchstart", function(e) {
+    if (e.target.tagName === "BUTTON" || e.target.tagName === "A") return;
+    var t = e.touches[0];
+    isDragging = true;
+    startX = t.clientX;
+    startY = t.clientY;
+    var rect = el.getBoundingClientRect();
+    origX = rect.left;
+    origY = rect.top;
+  }, { passive: true });
+
+  document.addEventListener("touchmove", function(e) {
+    if (!isDragging) return;
+    var t = e.touches[0];
+    var dx = t.clientX - startX;
+    var dy = t.clientY - startY;
+    el.style.left = (origX + dx) + "px";
+    el.style.top  = (origY + dy) + "px";
+    el.style.transform = "none";
+    el.style.right = "auto";
+    el.style.bottom = "auto";
+  }, { passive: true });
+
+  document.addEventListener("touchend", function() { isDragging = false; });
+}
+
+makeDraggable(popup);
+makeDraggable(exPopup);
+</script>
+</body>
+</html>
